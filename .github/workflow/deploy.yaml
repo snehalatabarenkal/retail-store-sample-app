@@ -1,0 +1,37 @@
+name: Build and Deploy to ECR and Helm
+
+on:
+  push:
+    branches:
+      - main
+      - 'releases/*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push Docker images
+        run: |
+          for service in cart catalog checkout orders ui; do
+            docker build -t ${{ secrets.ECR_REPOSITORY }}/${service}:latest ./src/$service
+            docker push ${{ secrets.ECR_REPOSITORY }}/${service}:latest
+          done
+
+      - name: Update Helm chart values
+        run: |
+          for service in cart catalog checkout orders ui; do
+            helm upgrade --install $service ./src/$service/chart --set image.repository=${{ secrets.ECR_REPOSITORY }}/${service} --set image.tag=latest
+          done
+
+      - name: Clean up
+        run: docker system prune -af
